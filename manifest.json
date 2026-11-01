@@ -1,0 +1,18 @@
+{
+  "name": "SuperAjo - Ajo Proof Vault",
+  "short_name": "SuperAjo",
+  "description": "Proof vault, defaulter protection and payout tracker for WhatsApp Ajo admins",
+  "start_url": "index.php",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f4f7f6",
+  "theme_color": "#0b7d45",
+  "lang": "en",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon.svg",     "sizes": "any",     "type": "image/svg+xml" }
+  ]
+}
