@@ -2,14 +2,30 @@
 require __DIR__ . '/config.php';
 $slug = isset($_GET['slug']) ? trim($_GET['slug']) : '';
 if ($slug === '') { redirect(BASE_URL . 'index.php'); }
+
 $ajo = db_one("SELECT * FROM ajos WHERE slug = '" . esc($slug) . "' LIMIT 1");
 if (!$ajo) { sa_die('Ajo not found', 'This Ajo link is wrong or the Ajo was deleted. Ask your admin for the correct link.', BASE_URL . 'index.php', 404); }
+
+// --- SUBSCRIPTION GATE ---
+if ($ajo['status'] === 'pending') {
+    sa_die('Pending Approval', 'This Ajo is still awaiting approval from the platform admin. Please check back later.', BASE_URL . 'index.php');
+}
+if ($ajo['status'] === 'suspended') {
+    sa_die('Ajo Suspended', 'This Ajo is currently inactive because the admin\'s subscription has expired.', BASE_URL . 'index.php');
+}
+if ($ajo['status'] === 'active' && !empty($ajo['expires_at']) && strtotime($ajo['expires_at']) < time()) {
+    db_exec("UPDATE ajos SET status = 'suspended' WHERE id = " . (int)$ajo['id']);
+    sa_die('Ajo Suspended', 'This Ajo is currently inactive because the admin\'s subscription has expired.', BASE_URL . 'index.php');
+}
+// --------------------------
+
 $ajoId = (int)$ajo['id'];
 $members = db_all("SELECT * FROM members WHERE ajo_id = $ajoId ORDER BY payout_position ASC, id ASC");
 $map = payment_map($ajoId, CURRENT_PERIOD);
 $totalMembers = count($members); $paidCount = 0; $pendingCount = 0;
 foreach ($members as $m) { $st = member_status($map, $m['id']); if ($st === 'paid') { $paidCount++; } if ($st === 'pending') { $pendingCount++; } }
 $percent = $totalMembers > 0 ? round(($paidCount / $totalMembers) * 100) : 0;
+
 $msgs = array(
     'uploaded' => array('success', 'Proof submitted! Your admin will confirm it shortly.'),
     'already' => array('info', 'You already have a confirmed payment for this period.'),
@@ -35,8 +51,10 @@ $msgs = array(
   <a class="brand" href="<?= BASE_URL ?>index.php"><span class="brand-dot"></span> SuperAjo</a>
   <span class="nav-tag">Member payment page</span>
 </div></header>
+
 <div class="container" style="padding-top:26px;max-width:820px;">
   <?php alert_from($msgs); ?>
+
   <div class="card">
     <div class="card-head" style="margin-bottom:14px;">
       <h1 class="card-title" style="font-size:24px;"><?= h($ajo['name']) ?></h1>
@@ -49,6 +67,7 @@ $msgs = array(
     </div>
     <div class="progress"><span style="width:<?= $percent ?>%"></span></div>
   </div>
+
   <div class="card mt-16">
     <div class="card-head"><h2 class="card-title">Payment Status</h2><p class="card-sub">Green = confirmed by admin. Amber = proof uploaded, waiting for admin.</p></div>
     <?php if ($totalMembers === 0): ?>
@@ -72,6 +91,7 @@ $msgs = array(
       <?php endforeach; ?>
     <?php endif; ?>
   </div>
+
   <div class="card mt-16">
     <div class="card-head"><h2 class="card-title">I Have Paid - Upload Proof</h2><p class="card-sub">Select your name, attach your transfer screenshot, and submit.</p></div>
     <form action="<?= BASE_URL ?>upload.php" method="post" enctype="multipart/form-data">
@@ -100,6 +120,7 @@ $msgs = array(
       <button type="submit" class="btn btn-primary btn-lg btn-block">Submit Payment Proof</button>
     </form>
   </div>
+
   <div class="footer">Powered by SuperAjo - proof vault for WhatsApp Ajo admins.</div>
 </div>
 <?php pwa_footer(); ?>
