@@ -7,6 +7,7 @@ define('CURRENT_PERIOD', 'Period 1');
 define('UPLOAD_DIR', __DIR__ . '/uploads');
 define('UPLOAD_URL', BASE_URL . 'uploads/');
 define('MAX_UPLOAD_BYTES', 5 * 1024 * 1024);
+
 function h($v) { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
 function redirect($url) { header('Location: ' . $url); exit; }
 function money($n) { return 'N' . number_format((float)$n); }
@@ -41,8 +42,6 @@ function alert_from($map) {
     }
 }
 
-// --- DYNAMIC DATABASE CONFIGURATION ---
-// Uses ZevCloud environment variables if they exist, otherwise falls back to local XAMPP.
 $host = getenv('DB_HOST') ?: 'localhost';
 $user = getenv('DB_USER') ?: 'root';
 $pass = getenv('DB_PASS') ?: '';
@@ -56,7 +55,6 @@ if (!$conn) {
        . '<div class="container" style="max-width:660px;padding:60px 18px;"><div class="card">'
        . '<h1 class="card-title">Database connection failed</h1>'
        . '<p class="card-sub">' . h(mysqli_connect_error()) . '</p>'
-       . '<p class="card-sub">Open phpMyAdmin and import <b>database.sql</b>.</p>'
        . '</div></div></body></html>';
     exit;
 }
@@ -67,6 +65,12 @@ function db_all($sql) { global $conn; $out = array(); $res = mysqli_query($conn,
 function db_one($sql) { global $conn; $res = mysqli_query($conn, $sql);
     if ($res) { $row = mysqli_fetch_assoc($res); mysqli_free_result($res); if ($row) { return $row; } } return null; }
 function db_exec($sql) { global $conn; return mysqli_query($conn, $sql); }
+
+function get_setting($key, $default = '') {
+    $row = db_one("SELECT setting_value FROM settings WHERE setting_key = '" . esc($key) . "' LIMIT 1");
+    return $row ? $row['setting_value'] : $default;
+}
+
 function payment_map($ajo_id, $period) {
     $ajo_id = (int)$ajo_id;
     $rows = db_all("SELECT * FROM payments WHERE ajo_id = $ajo_id AND period_label = '" . esc($period) . "' ORDER BY id ASC");
