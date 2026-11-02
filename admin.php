@@ -4,25 +4,48 @@ $token = '';
 if (isset($_GET['token'])) { $token = trim($_GET['token']); }
 elseif (isset($_POST['token'])) { $token = trim($_POST['token']); }
 if ($token === '') { redirect(BASE_URL . 'index.php'); }
+
 $ajo = db_one("SELECT * FROM ajos WHERE admin_token = '" . esc($token) . "' LIMIT 1");
 if (!$ajo) { sa_die('Private dashboard not found', 'This admin link is wrong. Check the link your Ajo was created with.', BASE_URL . 'index.php', 404); }
-$ajoId = (int)$ajo['id'];
+
+// --- SUBSCRIPTION GATE ---
+if ($ajo['status'] === 'pending') {
+    sa_die('Pending Approval', 'This Ajo has not yet been approved by the platform admin. Please check your tracking code or contact support.', BASE_URL . 'status.php?code=' . urlencode($ajo['approval_code']));
+}
+if ($ajo['status'] === 'suspended') {
+    sa_die('Ajo Suspended', 'This Ajo subscription has expired. Please contact the platform admin to renew.', BASE_URL . 'index.php');
+}
+if ($ajo['status'] === 'active' && !empty($ajo['expires_at']) && strtotime($ajo['expires_at']) < time()) {
+    db_exec("UPDATE ajos SET status = 'suspended' WHERE id = " . (int)$ajo['id']);
+    sa_die('Subscription Expired', 'Your 30-day subscription has expired. Please contact the platform admin to renew.', BASE_URL . 'index.php');
+}
+// --------------------------
+
+$ajoId   = (int)$ajo['id'];
 $members = db_all("SELECT * FROM members WHERE ajo_id = $ajoId ORDER BY payout_position ASC, id ASC");
-$map = payment_map($ajoId, CURRENT_PERIOD);
-$totalMembers = count($members); $paidCount = 0; $unpaidCount = 0; $received = 0;
-foreach ($members as $m) { if (member_status($map, $m['id']) === 'paid') { $paidCount++; } else { $unpaidCount++; } }
+$map     = payment_map($ajoId, CURRENT_PERIOD);
+
+$totalMembers = count($members);
+$paidCount = 0; $unpaidCount = 0; $received = 0;
+foreach ($members as $m) {
+    if (member_status($map, $m['id']) === 'paid') { $paidCount++; } else { $unpaidCount++; }
+}
 foreach ($map as $p) { if ($p['status'] === 'confirmed') { $received += (int)$p['amount']; } }
 $expected = $totalMembers * (int)$ajo['amount'];
-$percent = $totalMembers > 0 ? round(($paidCount / $totalMembers) * 100) : 0;
+$percent  = $totalMembers > 0 ? round(($paidCount / $totalMembers) * 100) : 0;
+
 $pending = db_all("SELECT p.*, m.name AS member_name FROM payments p JOIN members m ON m.id = p.member_id WHERE p.ajo_id = $ajoId AND p.period_label = '" . esc(CURRENT_PERIOD) . "' AND p.status = 'pending' ORDER BY p.id DESC");
 $nextCollector = null;
 foreach ($members as $m) { if ((int)$m['payout_received'] === 0) { $nextCollector = $m; break; } }
+
 $publicLink = root_url() . 'ajo.php?slug=' . urlencode($ajo['slug']);
 $adminLink = root_url() . 'admin.php?token=' . urlencode($ajo['admin_token']);
 $shareText = "Hello! Here is our Ajo \"" . $ajo['name'] . "\" (" . money($ajo['amount']) . " per " . $ajo['frequency'] . ").\n\nUpload your payment proof here: " . $publicLink;
+
 $defaulterParts = array();
 foreach ($members as $m) { if (member_status($map, $m['id']) !== 'paid') { $defaulterParts[] = $m['name'] . ' - ' . money($ajo['amount']); } }
 $defaulterText = 'Defaulters ' . CURRENT_PERIOD . ': ' . (count($defaulterParts) ? implode(', ', $defaulterParts) : 'None - everybody has paid');
+
 $msgs = array(
     'created' => array('success', 'Ajo created! Copy the public link below and share it in your WhatsApp group.'),
     'pay_confirmed' => array('success', 'Payment confirmed. Member is now marked PAID.'),
@@ -45,8 +68,10 @@ $msgs = array(
   <a class="brand" href="<?= BASE_URL ?>index.php"><span class="brand-dot"></span> SuperAjo</a>
   <span class="nav-tag">Private admin dashboard</span>
 </div></header>
+
 <div class="container" style="padding-top:24px;">
   <?php alert_from($msgs); ?>
+
   <div class="card">
     <div class="row" style="justify-content:space-between;align-items:flex-start;">
       <div>
@@ -76,6 +101,7 @@ $msgs = array(
       </div>
     </div>
   </div>
+
   <div class="stats mt-16">
     <div class="stat"><div class="stat-num"><?= $totalMembers ?></div><div class="stat-label">Members</div></div>
     <div class="stat"><div class="stat-num green"><?= $paidCount ?></div><div class="stat-label">Paid</div></div>
@@ -83,6 +109,7 @@ $msgs = array(
     <div class="stat"><div class="stat-num"><?= money($expected) ?></div><div class="stat-label">Expected</div></div>
     <div class="stat"><div class="stat-num green"><?= money($received) ?></div><div class="stat-label">Received</div></div>
   </div>
+
   <div class="card mt-16">
     <div class="row" style="justify-content:space-between;margin-bottom:8px;">
       <span class="badge badge-green"><?= $paidCount ?>/<?= $totalMembers ?> PAID</span>
@@ -90,11 +117,13 @@ $msgs = array(
     </div>
     <div class="progress"><span style="width:<?= $percent ?>%"></span></div>
   </div>
+
   <div class="tabs">
     <button type="button" class="tab-btn active" data-tab="tab1">Payments to Confirm (<?= count($pending) ?>)</button>
     <button type="button" class="tab-btn" data-tab="tab2">Members &amp; Defaulters</button>
     <button type="button" class="tab-btn" data-tab="tab3">Payout Order</button>
   </div>
+
   <div id="tab1" class="tab-panel active">
     <div class="card">
       <div class="card-head"><h2 class="card-title">Proofs Waiting For You</h2><p class="card-sub">Click the image to view the full screenshot, then confirm or reject.</p></div>
@@ -131,6 +160,7 @@ $msgs = array(
       <?php endif; ?>
     </div>
   </div>
+
   <div id="tab2" class="tab-panel">
     <div class="card">
       <div class="card-head"><h2 class="card-title">Members &amp; Defaulter List</h2><p class="card-sub">Mark who has collected their payout, and export the defaulter list.</p></div>
@@ -163,6 +193,7 @@ $msgs = array(
       <button type="button" class="btn btn-primary" onclick="copyInput('defaulterBox', this)">Copy defaulter list</button>
     </div>
   </div>
+
   <div id="tab3" class="tab-panel">
     <div class="card">
       <div class="card-head">
@@ -197,6 +228,7 @@ $msgs = array(
       <?php endif; ?>
     </div>
   </div>
+
   <div class="footer">SuperAjo &bull; Bookmark this admin link - it is the only key to this dashboard.</div>
 </div>
 <?php pwa_footer(); ?>
